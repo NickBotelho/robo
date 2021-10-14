@@ -12,19 +12,22 @@ from infra.chatcommands import ChatCommands
 from infra.patch import PatchManager
 from crypto.rsa import RSA
 from utils.rtbufferdeframer import RtBufferDeframer
+from enums.enums import MediusChatMessageType
 
-import datetime
+import queue
+from datetime import datetime
 
 
 class Monolith:
 
 	def __init__(self, config: dict):
 		self._config = config
-		self._client_manager = ClientManager()
+		self._client_manager = ClientManager(config)
 		self._chat_commands = ChatCommands()
 		self._logger = logging.getLogger('robo.monolith')
 		self._patch_manager = PatchManager()
 
+		self._chat_messages = queue.Queue()
 
 	#################################################################################
 	# UDP Pipeline
@@ -196,8 +199,12 @@ class Monolith:
 	def client_disconnected(self, con: Connection):
 		self._client_manager.client_disconnected(con)
 
-	def process_chat(self, player, text):
+	def process_chat(self, player, text, chat_message_type):
 		self._chat_commands.process_chat(player, text)
+
+		if chat_message_type == MediusChatMessageType.BROADCAST:
+			username = player.get_username()
+			self._chat_messages.put({"username":username, "message":text, "ts": datetime.now().timestamp()})		
 
 	def process_login(self, player):
 		self._patch_manager.process_login(player)
@@ -210,6 +217,13 @@ class Monolith:
 	def api_req_games(self):
 		return self._client_manager.api_req_games()
 
+	def api_req_chat(self) -> list:
+		result = []
+		size = self._chat_messages.qsize()
+		for i in range(size):
+			result.append(self._chat_messages.get())
+		return result
+
 # ===================================
 # Misc
 
@@ -217,31 +231,31 @@ class Monolith:
 		self._client_manager.clear_zombie_games()
 
 	def get_mas_ip(self) -> str:
-		return self._config['mas']['public_ip']
+		return self._config['public_ip']
 
 	def get_mas_port(self) -> int:
 		return self._config['mas']['port']
 
 	def get_mls_ip(self) -> str:
-		return self._config['mls']['public_ip']
+		return self._config['public_ip']
 
 	def get_mls_port(self) -> int:
 		return self._config['mls']['port']
 
 	def get_dmetcp_ip(self) -> str:
-		return self._config['dmetcp']['public_ip']
+		return self._config['public_ip']
 
 	def get_dmetcp_port(self) -> int:
 		return self._config['dmetcp']['port']
 
 	def get_dmeudp_ip(self) -> str:
-		return self._config['dmeudp']['public_ip']
+		return self._config['public_ip']
 
 	def get_dmeudp_port(self) -> int:
 		return self._config['dmeudp']['port']
 
 	def get_nat_ip(self) -> str:
-		return self._config['nat']['public_ip']
+		return self._config['public_ip']
 
 	def get_nat_port(self) -> int:
 		return self._config['nat']['port']

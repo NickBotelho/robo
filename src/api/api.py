@@ -6,19 +6,20 @@ import asyncio
 from time import sleep
 import json
 from logging import handlers
-
+from datetime import datetime
 
 class Api():
-	def __init__(self, monolith, ip: str, port: int, sync_rate: int, log_maxbytes, log_backup_count):
+	def __init__(self, monolith, ip: str, port: int, sync_rate: int, log_maxbytes, log_backup_count, log_location):
 		self._logger = logging.getLogger(f"robo.api")
 		formatter = logging.Formatter('%(asctime)s API | %(levelname)s | %(message)s')
-		filehandler = handlers.RotatingFileHandler(os.path.join('logs','api.log'), mode='w', maxBytes=log_maxbytes, backupCount=log_backup_count)
+		filehandler = handlers.RotatingFileHandler(os.path.join(log_location,'api.log'), mode='w', maxBytes=log_maxbytes, backupCount=log_backup_count)
 		filehandler.setLevel(logging.DEBUG)
 		filehandler.setFormatter(formatter)
 		self._logger.addHandler(filehandler)
 
 		self._players = "[]"
 		self._games = "[]"
+		self._chat = []
 
 		self._monolith = monolith
 		self._ip = ip
@@ -40,6 +41,11 @@ class Api():
 			games = self._monolith.api_req_games()
 			self._games = json.dumps(games)
 
+			# Sync chat
+			self._chat += self._monolith.api_req_chat()
+			# only save last 10 minutes
+			self._chat = [c for c in self._chat if (datetime.now().timestamp() - c['ts']) / 60 < 10]
+
 			await asyncio.sleep(self._sync_rate)
 
 	async def players(self, request):
@@ -50,12 +56,18 @@ class Api():
 		self._logger.debug("Games request!")
 		return web.Response(text=self._games)
 
+	async def chat(self, request):
+		self._logger.debug("Chat request!")
+		self._logger.debug(self._chat)
+		return web.Response(text=json.dumps(self._chat))
+
 	async def main(self):
 		# add stuff to the loop, e.g. using asyncio.create_task()
 
 		app = web.Application()
 		app.router.add_get('/players', self.players)
 		app.router.add_get('/games', self.games)
+		app.router.add_get('/chat', self.chat)
 
 		runner = web.AppRunner(app)
 		await runner.setup()
